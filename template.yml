@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+#https://www.youtube.com/watch?v=teutZpUALcE 
+#https://github.com/mavi888/demo-cicd-codepipeline 
+Parameters:
+  MyEnvironment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment of this stack of resources
+  
+  # JwksUri:
+  #   Type: String
+  #   Default: dev
+  #   AllowedValues:
+  #     - dev
+  #     - staging
+  #     - prod
+  #   Description: JWKS uri of lambda authorizer
+
+Mappings:
+  EnvironmentName:
+    dev:
+      tableName: ipp-preference-dev
+    staging:
+      tableName: ipp-preference-staging
+    prod:
+      tableName: ipp-preference-prod
+  JwksResourcesName:
+    dev:
+      certificateUri: "https://www3.wipo.int/am/oauth2/connect/jwk_uri"
+    staging:
+      certificateUri: "https://www5.wipo.int/am/oauth2/connect/jwk_uri"
+    prod:
+      certificateUri: "https://www.wipo.int/am/oauth2/connect/jwk_uri"
+
+Conditions:
+  IsProd: !Equals [!Ref MyEnvironment, prod]
+
+Resources:
+  ApiGatewayRestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref MyEnvironment
+      TracingEnabled: true
+      Auth:
+        DefaultAuthorizer: MyLambdaTokenAuthorizer
+        Authorizers: 
+          MyLambdaTokenAuthorizer:
+            FunctionArn: !GetAtt Authorizer.Arn   
+  Authorizer:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/functions/
+      Handler: authorizer.handler
+      Runtime: nodejs12.x
+      Environment:
+        Variables:
+          JWKS_URI: !FindInMap [JwksResourcesName, !Ref MyEnvironment, certificateUri]
+
+  GetAllPreference:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: get-preferences.handler
+      Runtime: nodejs12.x
+      Layers:
+        - !Ref TempConversionDepLayer
+      CodeUri: src/functions/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MyDynamoDBTable
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MyDynamoDBTable
+      Events:
+        GetAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+            Path: preferences
+            Method: GET
+
+  CreatePreference:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: create-preference.handler
+      Runtime: nodejs12.x
+      Layers:
+        - !Ref TempConversionDepLayer
+      CodeUri: src/functions/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MyDynamoDBTable
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MyDynamoDBTable
+      Events:
+        PostAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+            Path: 'preferences'
+            Method: POST
+  GetPreference:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: get-preference.handler
+      Layers:
+        - !Ref TempConversionDepLayer
+      Runtime: nodejs12.x
+      CodeUri: src/functions/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MyDynamoDBTable
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MyDynamoDBTable
+      Events:
+        getAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+            Path: preferences/{preferenceId}
+            Method: GET
+
+  UpdatePreference:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: update-preference.handler
+      Layers:
+        - !Ref TempConversionDepLayer
+      Runtime: nodejs12.x
+      CodeUri: src/functions/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MyDynamoDBTable
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MyDynamoDBTable
+      Events:
+        updateAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+            Path: preferences/{preferenceId}
+            Method: PUT
+
+  DeletePreference:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Handler: delete-preference.handler
+      Layers:
+        - !Ref TempConversionDepLayer
+      Runtime: nodejs12.x
+      CodeUri: src/functions/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MyDynamoDBTable
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MyDynamoDBTable
+      Events:
+        deleteAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+            Path: preferences/{preferenceId}
+            Method: DELETE
+
+  MyDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      TableName: !FindInMap [EnvironmentName, !Ref MyEnvironment, tableName]
+      #https://stackoverflow.com/questions/38151687/dynamodb-adding-non-key-attributes
+      AttributeDefinitions:
+        - AttributeName: p_key
+          AttributeType: S
+        - AttributeName: username
+          AttributeType: S
+      KeySchema:
+        - AttributeName: p_key
+          KeyType: HASH
+        - AttributeName: username
+          KeyType: RANGE
+      # ProvisionedThroughput:
+      #   ReadCapacityUnits: 5
+      #   WriteCapacityUnits: 5
+  MySafeDeployedFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: mysafe-deployment.handler
+      Runtime: nodejs12.x
+      AutoPublishAlias: live
+      CodeUri: src/functions/
+      DeploymentPreference:
+        Type: !If [IsProd, Linear10PercentEvery1Minute, AllAtOnce]
+
+  TempConversionDepLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: sam-app-dependencies
+      Description: global functions
+      ContentUri: src/globals/
+      CompatibleRuntimes:
+        - nodejs12.x
+      LicenseInfo: 'MIT'
+      RetentionPolicy: Retain
+
+Outputs:
+  Region:
+    Description: "Region"
+    Value: !Ref AWS::Region
+
+  ApiId:
+    Description: "API ID"
+    Value: !Ref ApiGatewayRestApi
+
+  ApiUrl:
+    Description: "API endpoint URL for Prod environment"
+    Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/dev/'

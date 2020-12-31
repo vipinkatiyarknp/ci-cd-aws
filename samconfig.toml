@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "IppPersistence"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-pr27z1u6kqim"
+s3_prefix = "IppPersistence"
+region = "ap-south-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "MyEnvironment=\"dev\" JwksUri=\"dev\""

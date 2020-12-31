@@ -1,0 +1,3 @@
+sam build
+sam deploy --stack-name teststack1 --s3-bucket test-bucket-vipin-ipp --parameter-overrides "TableName=ippTable DeploymentEnv=testEnv JwksUri=https://www5.wipo.int/am/oauth2/connect/jwk_uri" --capabilities CAPABILITY_IAM
+
