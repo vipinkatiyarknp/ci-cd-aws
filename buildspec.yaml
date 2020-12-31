@@ -23,6 +23,7 @@ phases:
       - node -v
       - npm -v
       - aws --version
+      - cd functions
       - npm install
   pre_build:
     commands:
