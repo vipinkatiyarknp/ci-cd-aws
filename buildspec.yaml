@@ -22,7 +22,7 @@ phases:
       - pipenv install awscli
       - node -v
       - npm -v
-      - cd src
+      - aws --version
       - npm install
   pre_build:
     commands:
