@@ -2,6 +2,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: "AWS::Serverless-2016-10-31"
 #https://www.youtube.com/watch?v=teutZpUALcE 
 #https://github.com/mavi888/demo-cicd-codepipeline 
+#https://github.com/symphoniacloud/multi-region-codepipeline
 Parameters:
   MyEnvironment:
     Type: String
